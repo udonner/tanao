@@ -183,7 +183,7 @@
             <div class="area-row">
                 <div>
                     <div class="muted">現在の棚卸エリア</div>
-                    <p id="currentArea">⚠️ 未選択 (Ar-...)</p>
+                    <p id="currentArea">⚠️ 未選択 (AR-...)</p>
                 </div>
                 <div id="areaIndicator" aria-label="エリア未選択"></div>
             </div>
@@ -197,7 +197,7 @@
             <p id="cameraStatus" class="muted" role="status" aria-live="polite">
                 ボタンを押してカメラを起動してください。
             </p>
-            <p class="muted">エリアバーコード (Ar-) または品物バーコード (ITEM-) を読み取ってください。</p>
+            <p class="muted">エリアバーコード (AR-) または品物バーコード (ITEM-) を読み取ってください。</p>
         </section>
 
         <section class="card">
@@ -320,7 +320,7 @@
                 areaIndicatorEl.classList.add('active');
                 areaIndicatorEl.setAttribute('aria-label', 'エリア選択済み');
             } else {
-                currentAreaEl.textContent = '⚠️ 未選択 (Ar-...)';
+                currentAreaEl.textContent = '⚠️ 未選択 (AR-...)';
                 currentAreaEl.style.color = '#dc2626';
                 areaIndicatorEl.classList.remove('active');
                 areaIndicatorEl.setAttribute('aria-label', 'エリア未選択');
@@ -466,7 +466,7 @@
         function onScanSuccess(decodedText) {
             if (isProcessing) return;
 
-            if (decodedText.startsWith('Ar-')) {
+            if (decodedText.startsWith('AR-')) {
                 isProcessing = true;
                 currentAreaId = decodedText;
                 saveLocalData('inventory_current_area', currentAreaId);
@@ -479,7 +479,7 @@
             if (decodedText.startsWith('ITEM-')) {
                 if (!currentAreaId) {
                     isProcessing = true;
-                    showToast('先にエリアバーコード（Ar-...）をスキャンしてください');
+                    showToast('先にエリアバーコード（AR-...）をスキャンしてください');
                     setTimeout(() => { isProcessing = false; }, 1500);
                     return;
                 }
