@@ -732,7 +732,7 @@
                 const input = document.createElement('input');
                 input.className = 'entry-quantity';
                 input.type = 'number';
-                input.min = '1';
+                input.min = '0';
                 input.step = '1';
                 input.inputMode = 'numeric';
                 input.autocomplete = 'off';
@@ -795,7 +795,7 @@
 
             const invalid = pendingItems.find(item => {
                 const qty = Number(item.quantity);
-                return item.quantity === '' || !Number.isInteger(qty) || qty <= 0;
+                return item.quantity === '' || !Number.isInteger(qty) || qty < 0;
             });
             if (invalid) {
                 showToast(`${invalid.item} の数量を1以上の整数で入力してください`, 3500);
