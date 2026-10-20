@@ -7,7 +7,6 @@
     <title>棚卸スキャンアプリ</title>
 
     <!-- インターネット接続が必要です -->
-    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <script src="https://unpkg.com/html5-qrcode"></script>
 
     <style>
@@ -359,15 +358,22 @@
                 }
 
                 const config = {
-                    fps: 10,
+                    // QR解析を毎秒最大3回に抑え、CPU負荷を軽減
+                    fps: 3,
+                    // 読み取り枠を小さくして解析する範囲を縮小
                     qrbox: (width, height) => {
-                        const boxWidth = Math.max(100, Math.floor(Math.min(width, height) * 0.7));
+                        const boxWidth = Math.max(100, Math.floor(Math.min(width, height) * 0.5));
                         return {
                             width: Math.min(boxWidth, width),
                             height: Math.min(Math.floor(boxWidth * 0.55), height)
                         };
                     },
-                    aspectRatio: 1.333
+                    aspectRatio: 1.333,
+                    // 写真撮影ではなく、このアプリのカメラ映像だけ低解像度を希望
+                    videoConstraints: {
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    }
                 };
 
                 // カメラ一覧を取得できる場合は背面カメラを優先して選択する
@@ -490,6 +496,15 @@
                 quantityInputEl.value = '1';
                 quantityModalEl.classList.remove('hidden');
 
+                // 数量入力中はQR解析を止めて、余分な処理を減らす（カメラ映像は表示したまま）
+                try {
+                    if (html5QrcodeScanner && cameraRunning) {
+                        html5QrcodeScanner.pause();
+                    }
+                } catch (pauseError) {
+                    console.warn('QR解析の一時停止に失敗しました:', pauseError);
+                }
+
                 setTimeout(() => {
                     quantityInputEl.focus();
                     quantityInputEl.select();
@@ -533,6 +548,16 @@
         function closeModal() {
             quantityModalEl.classList.add('hidden');
             pendingItemId = '';
+
+            // 数量入力が終わったらQR解析を再開
+            try {
+                if (html5QrcodeScanner && cameraRunning) {
+                    html5QrcodeScanner.resume();
+                }
+            } catch (resumeError) {
+                console.warn('QR解析の再開に失敗しました:', resumeError);
+            }
+
             setTimeout(() => { isProcessing = false; }, 800);
         }
 
