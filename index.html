@@ -215,7 +215,7 @@
             <div class="area-row">
                 <div>
                     <div class="muted">現在の棚卸エリア</div>
-                    <p id="currentArea">⚠️ 未選択 (AR-...)</p>
+                    <p id="currentArea">⚠️ 未選択 (AREA-...)</p>
                 </div>
                 <div id="areaIndicator" aria-label="エリア未選択"></div>
             </div>
@@ -234,7 +234,7 @@
             </div>
 
             <p id="cameraStatus" class="muted" role="status" aria-live="polite">
-                まずエリアバーコード（AR-...）を読み取り、その後に商品バーコード（ITEM-...）を続けて読み取ってください。
+                まずエリアバーコード（AREA-...）を読み取り、その後に商品バーコード（ITEM-...）を続けて読み取ってください。
             </p>
             <div class="scan-summary">
                 <span>今回の読み取り商品</span>
@@ -414,7 +414,7 @@
                 areaIndicatorEl.classList.add('active');
                 areaIndicatorEl.setAttribute('aria-label', 'エリア選択済み');
             } else {
-                currentAreaEl.textContent = '⚠️ 未選択 (AR-...)';
+                currentAreaEl.textContent = '⚠️ 未選択 (AREA-...)';
                 currentAreaEl.style.color = '#dc2626';
                 areaIndicatorEl.classList.remove('active');
                 areaIndicatorEl.setAttribute('aria-label', 'エリア未選択');
@@ -514,7 +514,7 @@
                 cameraRunning = true;
                 cameraStatusEl.textContent = currentAreaId
                     ? `エリア ${currentAreaId} で商品を読み取っています。`
-                    : 'まずエリアバーコード（AR-...）を読み取ってください。';
+                    : 'まずエリアバーコード（AREA-...）を読み取ってください。';
                 
                 startCameraBtn.classList.add('hidden');
                 activeCameraControls.classList.remove('hidden');
@@ -573,8 +573,8 @@
 
             const code = String(decodedText || '').trim().toUpperCase();
 
-            // エリアバーコード (AR-...)
-            if (code.startsWith('AR-')) {
+            // エリアバーコード (AREA-...)
+            if (code.startsWith('AREA-')) {
                 if (pendingItems.length > 0 && currentAreaId && currentAreaId !== code) {
                     isProcessing = true;
                     showToast('読み取り済み商品があります。先に保存してください。', 3000);
@@ -603,7 +603,7 @@
             if (code.startsWith('ITEM-')) {
                 if (!currentAreaId) {
                     isProcessing = true;
-                    showToast('先にエリアバーコード（AR-...）を読み取ってください');
+                    showToast('先にエリアバーコード（AREA-...）を読み取ってください');
                     setTimeout(() => { isProcessing = false; }, 1200);
                     return;
                 }
@@ -624,7 +624,7 @@
                 return;
             }
 
-            console.log('対象外コード (AR- または ITEM- 以外):', code);
+            console.log('対象外コード (AREA- または ITEM- 以外):', code);
         }
 
         // --- カメラ停止して数量入力へ ---
