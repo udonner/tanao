@@ -63,22 +63,23 @@
 
         #reader {
             width: 100%;
-            min-height: 180px;
-            aspect-ratio: 4 / 3;
+            position: relative;
             overflow: hidden;
             border: 1px solid #d1d5db;
             border-radius: 10px;
-            background: #111827;
+            background: #000;
         }
-
         #reader video {
             display: block;
-            max-width: 100% !important;
-            object-fit: contain !important;
+            width: 100% !important;
+            height: auto !important;
+        }        
+        #reader__scan_region {
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
-
-        #reader img { max-width: 100%; }
-        #reader__scan_region { min-height: 140px; }
+        #reader img { max-width: 100%; }        
         #reader__dashboard { padding: 8px; }
 
         .button {
@@ -449,18 +450,16 @@
                 }
 
                 const config = {
-                    fps: 6,
-                    qrbox: (width, height) => {
-                        const boxWidth = Math.max(120, Math.floor(Math.min(width, height) * 0.75));
+                    fps: 6, // 反応速度を向上
+                    qrbox: (viewfinderWidth, viewfinderHeight) => {                        
+                        const boxWidth = Math.floor(viewfinderWidth * 0.75);
+                        const boxHeight = Math.min(100, Math.floor(boxWidth * 0.35)); 
                         return {
-                            width: Math.min(boxWidth, width),
-                            height: Math.min(Math.floor(boxWidth * 0.45), height)
+                            width: boxWidth,
+                            height: boxHeight
                         };
-                    },
-                    aspectRatio: 1.333,
+                    },                    
                     videoConstraints: {
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 },
                         facingMode: { ideal: 'environment' }
                     }
                 };
