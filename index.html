@@ -1,3 +1,30 @@
+Ran command: List files in workspace (`dir`)
+
+ご要望の3点（**読み取り時のビープ音・バイブレーション**、**行削除機能**、**LocalStorage全削除機能**）を追加・統合した完全なHTMLコードを作成しました。
+
+そのままファイルに上書き保存すればすぐに動作します。
+
+### 主な変更・追加点
+1. **読み取り成功時のビープ音 & 振動（Web Audio API）**
+   - 外部音声ファイルを使わずブラウザ標準機能で鳴らすため、オフラインでも即座に鳴ります。
+   - 画面を見なくても判別できるように音を変えています。
+     - **商品バーコード (`ITEM_...`)**: 「ピッ」（高音・単音）
+     - **エリアバーコード (`Ar_...`)**: 「ピピッ」（2連音）
+2. **行削除機能**
+   - **スキャン中のプレビュー一覧**: 「✕ 削除」ボタンで間違えて読んだ商品をその場で取り消し可能。
+   - **数量入力画面**: 各行に「✕」ボタンを配置し、入力中でも個別除外可能。
+3. **LocalStorageクリア機能（全削除）**
+   - 履歴カードの右上に「全削除」ボタンを追加。
+   - 誤操作を防ぐための二重確認ダイアログ（件数表示＆CSVバックアップ喚起）を表示。
+4. **使い勝手向上**
+   - 数量入力欄をタップした際に自動で全選択（`select()`）されるようにし、テンキーでの入力効率を向上。
+   - 外部ライブラリ（`html5-qrcode`）のバージョンを固定（`v2.3.8`）。
+
+---
+
+### 完全なコード (`index.html`)
+
+```html
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -6,8 +33,8 @@
     <meta name="theme-color" content="#2563eb">
     <title>棚卸スキャンアプリ</title>
 
-    <!-- インターネット接続が必要です -->
-    <script src="https://unpkg.com/html5-qrcode"></script>
+    <!-- バージョンを固定したQR/バーコード読み取りライブラリ -->
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 
     <style>
         * { box-sizing: border-box; }
@@ -69,7 +96,6 @@
             background: #111827;
         }
 
-        /* html5-qrcode が作る映像サイズを無理に固定しない */
         #reader video {
             display: block;
             max-width: 100% !important;
@@ -114,41 +140,65 @@
         .delete-button {
             border: 0;
             border-radius: 8px;
-            padding: 6px 8px;
+            padding: 6px 10px;
             background: #fee2e2;
             color: #b91c1c;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+        .delete-button:hover { background: #fecaca; }
+
+        .scan-summary {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 14px;
+            padding: 10px 12px;
+            border-radius: 10px;
+            background: #eff6ff;
+            color: #1d4ed8;
+        }
+        .scan-summary strong { font-size: 1.1rem; }
+        .pending-preview, .quantity-entry-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        .pending-row, .quantity-entry-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 10px 12px;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            background: #f9fafb;
+        }
+        .pending-code, .entry-code {
+            min-width: 0;
+            overflow-wrap: anywhere;
+            font-weight: 700;
+        }
+        .entry-quantity {
+            width: 100px;
+            flex: 0 0 100px;
+            padding: 8px;
+            border: 2px solid #d1d5db;
+            border-radius: 9px;
+            text-align: center;
+            font-size: 1.2rem;
+            font-weight: 700;
+            background: #fff;
+        }
+        .entry-quantity:focus { outline: 2px solid #93c5fd; border-color: #2563eb; }
+        .pending-tag { color: #6b7280; font-size: .75rem; }
+        @media (max-width: 360px) {
+            .entry-quantity { width: 80px; flex-basis: 80px; }
+            .pending-row, .quantity-entry-row { padding: 9px; gap: 8px; }
         }
 
         .hidden { display: none !important; }
-        .modal {
-            position: fixed;
-            inset: 0;
-            z-index: 100;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 16px;
-            background: #0009;
-        }
-        .modal-panel {
-            width: min(100%, 360px);
-            padding: 24px;
-            border-radius: 16px;
-            background: white;
-            box-shadow: 0 12px 40px #0004;
-        }
-        .modal-panel h3 { margin: 4px 0 16px; overflow-wrap: anywhere; }
-        .modal-panel label { display: block; margin-bottom: 6px; color: #6b7280; font-size: .85rem; }
-        #quantityInput {
-            width: 100%;
-            padding: 12px;
-            border: 2px solid #d1d5db;
-            border-radius: 10px;
-            background: #f9fafb;
-            text-align: center;
-            font-size: 1.5rem;
-            font-weight: 700;
-        }
         #toast {
             position: fixed;
             z-index: 120;
@@ -178,50 +228,61 @@
     </header>
 
     <main class="container">
+        <!-- エリア表示 -->
         <section class="card">
             <div class="area-row">
                 <div>
                     <div class="muted">現在の棚卸エリア</div>
-                    <p id="currentArea">⚠️ 未選択 (AR-...)</p>
+                    <p id="currentArea">⚠️ 未選択 (Ar_...)</p>
                 </div>
                 <div id="areaIndicator" aria-label="エリア未選択"></div>
             </div>
         </section>
 
+        <!-- カメラ・スキャン中プレビュー -->
         <section class="card">
-            <h2 class="section-title">📷 バーコードリーダー</h2>
+            <h2 class="section-title">📷 バーコード連続読み取り</h2>
             <div id="reader"></div>
-            <button id="startCameraBtn" class="button primary" type="button">📷 カメラを起動</button>
-            <button id="stopCameraBtn" class="button secondary hidden" type="button" style="margin-top:8px">カメラを停止</button>
+            <button id="startCameraBtn" class="button primary" type="button">📷 読み取り開始</button>
+            <button id="stopCameraBtn" class="button secondary hidden" type="button" style="margin-top:8px">読み取り終了・数量入力へ</button>
             <p id="cameraStatus" class="muted" role="status" aria-live="polite">
-                ボタンを押してカメラを起動してください。
+                まずエリアバーコード（Ar_...）を読み取り、その後に商品バーコード（ITEM_...）を続けて読み取ってください。
             </p>
-            <p class="muted">エリアバーコード (AR-) または品物バーコード (ITEM-) を読み取ってください。</p>
+            <div class="scan-summary">
+                <span>今回の読み取り商品</span>
+                <strong><span id="pendingCount">0</span> 件</strong>
+            </div>
+            <div id="pendingPreview" class="pending-preview">
+                <p id="pendingEmpty" class="muted">まだ商品を読み取っていません。</p>
+            </div>
         </section>
 
+        <!-- 数量一括入力 -->
+        <section id="quantityEntryCard" class="card hidden">
+            <div class="area-row" style="margin-bottom:8px">
+                <h2 class="section-title" style="margin:0">🧮 数量をまとめて入力</h2>
+                <span class="muted" id="entryAreaLabel"></span>
+            </div>
+            <p class="muted">各商品の数量を入力してください。不要な行は「✕」で削除できます。</p>
+            <div id="quantityEntryList" class="quantity-entry-list"></div>
+            <button id="saveBatchBtn" class="button primary" type="button" style="margin-top:12px">入力した数量を一括保存</button>
+            <button id="backToScanBtn" class="button secondary" type="button" style="margin-top:8px">追加でスキャンする</button>
+        </section>
+
+        <!-- 保存履歴 & 操作 -->
         <section class="card">
             <div class="area-row" style="margin-bottom:12px">
-                <h2 class="section-title" style="margin:0">📊 スキャン履歴 (<span id="dataCount">0</span>件)</h2>
-                <button id="downloadCsv" class="secondary hidden" type="button" style="padding:8px;border:0;border-radius:8px">CSV出力</button>
+                <h2 class="section-title" style="margin:0">📊 保存履歴 (<span id="dataCount">0</span>件)</h2>
+                <div style="display:flex; gap:6px;">
+                    <button id="downloadCsv" class="secondary hidden" type="button" style="padding:6px 12px;border:0;border-radius:8px;font-size:0.85rem">CSV出力</button>
+                    <button id="clearAllBtn" class="danger hidden" type="button" style="padding:6px 12px;border:0;border-radius:8px;font-size:0.85rem">全削除</button>
+                </div>
             </div>
             <div id="historyList">
                 <p id="emptyMessage" class="muted" style="text-align:center;padding:24px 0">データがありません。バーコードをスキャンしてください。</p>
             </div>
         </section>
     </main>
-
-    <div id="quantityModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modalItemTitle">
-        <div class="modal-panel">
-            <div class="muted" style="color:#16a34a;font-weight:700">品物を検知しました</div>
-            <h3 id="modalItemTitle">ITEM-001</h3>
-            <label for="quantityInput">数量を入力してください</label>
-            <input type="number" id="quantityInput" min="1" step="1" value="1" inputmode="numeric">
-            <div class="button-row" style="margin-top:16px">
-                <button id="cancelModalBtn" class="button secondary" type="button">キャンセル</button>
-                <button id="submitModalBtn" class="button primary" type="button">確定して再開</button>
-            </div>
-        </div>
-    </div>
 
     <div id="toast" class="hidden" role="status" aria-live="polite"></div>
 
@@ -232,31 +293,81 @@
         // --- 状態 ---
         let currentAreaId = '';
         let inventoryData = [];
+        let pendingItems = []; // 今回読み取った商品 { item: string, quantity: string }
         let html5QrcodeScanner = null;
-        let isProcessing = false;
         let cameraStarting = false;
         let cameraRunning = false;
-        let pendingItemId = '';
+        let isProcessing = false;
         let toastTimer = null;
+        let audioCtx = null; // 音声再生用コンテキスト
 
         // --- DOM ---
         const currentAreaEl = document.getElementById('currentArea');
         const areaIndicatorEl = document.getElementById('areaIndicator');
-        const quantityModalEl = document.getElementById('quantityModal');
-        const modalItemTitleEl = document.getElementById('modalItemTitle');
-        const quantityInputEl = document.getElementById('quantityInput');
-        const submitModalBtn = document.getElementById('submitModalBtn');
-        const cancelModalBtn = document.getElementById('cancelModalBtn');
         const historyListEl = document.getElementById('historyList');
         const emptyMessageEl = document.getElementById('emptyMessage');
         const dataCountEl = document.getElementById('dataCount');
         const downloadCsvBtn = document.getElementById('downloadCsv');
+        const clearAllBtn = document.getElementById('clearAllBtn');
         const toastEl = document.getElementById('toast');
         const startCameraBtn = document.getElementById('startCameraBtn');
         const stopCameraBtn = document.getElementById('stopCameraBtn');
         const cameraStatusEl = document.getElementById('cameraStatus');
+        const pendingCountEl = document.getElementById('pendingCount');
+        const pendingPreviewEl = document.getElementById('pendingPreview');
+        const pendingEmptyEl = document.getElementById('pendingEmpty');
+        const quantityEntryCardEl = document.getElementById('quantityEntryCard');
+        const quantityEntryListEl = document.getElementById('quantityEntryList');
+        const entryAreaLabelEl = document.getElementById('entryAreaLabel');
+        const saveBatchBtn = document.getElementById('saveBatchBtn');
+        const backToScanBtn = document.getElementById('backToScanBtn');
 
-        // --- localStorageを安全に読み込む ---
+        // --- ビープ音 & バイブレーション制御 ---
+        function getAudioContext() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+            return audioCtx;
+        }
+
+        function playBeep(type = 'item') {
+            try {
+                const ctx = getAudioContext();
+                if (type === 'area') {
+                    // エリア用：2音（ピピッ）
+                    playTone(ctx, 1320, 0.07, 0);
+                    playTone(ctx, 1760, 0.10, 0.08);
+                } else {
+                    // 商品用：1音（ピッ）
+                    playTone(ctx, 1760, 0.08, 0);
+                }
+            } catch (error) {
+                console.warn('ビープ音再生エラー:', error);
+            }
+
+            // バイブレーション対応端末向け
+            if ('vibrate' in navigator) {
+                navigator.vibrate(type === 'area' ? [50, 40, 50] : 60);
+            }
+        }
+
+        function playTone(ctx, freq, duration, startOffset = 0) {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, ctx.currentTime + startOffset);
+            gain.gain.setValueAtTime(0.15, ctx.currentTime + startOffset);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + startOffset + duration);
+            osc.start(ctx.currentTime + startOffset);
+            osc.stop(ctx.currentTime + startOffset + duration);
+        }
+
+        // --- localStorage ---
         function loadStoredData(key, fallback) {
             try {
                 const raw = localStorage.getItem(key);
@@ -265,12 +376,6 @@
                 console.error(`保存データ読み込みエラー (${key}):`, error);
                 return fallback;
             }
-        }
-
-        try {
-            currentAreaId = localStorage.getItem('inventory_current_area') || '';
-        } catch (error) {
-            console.warn('エリア保存領域を利用できません:', error);
         }
 
         const storedInventory = loadStoredData('inventory_records', []);
@@ -282,28 +387,27 @@
                 return true;
             } catch (error) {
                 console.error(`保存エラー (${key}):`, error);
-                showToast('端末にデータを保存できませんでした。ブラウザ設定を確認してください。');
+                showToast('端末にデータを保存できませんでした。');
                 return false;
             }
         }
 
-        // --- 初期化 ---
         document.addEventListener('DOMContentLoaded', () => {
             updateAreaUI();
             renderHistory();
+            renderPendingPreview();
 
-            startCameraBtn.addEventListener('click', initScanner);
-            stopCameraBtn.addEventListener('click', stopScanner);
-            submitModalBtn.addEventListener('click', submitQuantity);
-            cancelModalBtn.addEventListener('click', closeModal);
-            downloadCsvBtn.addEventListener('click', exportToCsv);
-
-            quantityInputEl.addEventListener('keydown', event => {
-                if (event.key === 'Enter') submitQuantity();
+            startCameraBtn.addEventListener('click', () => {
+                getAudioContext(); // ユーザー操作契機でオーディオ初期化
+                initScanner();
             });
+            stopCameraBtn.addEventListener('click', finishScanning);
+            saveBatchBtn.addEventListener('click', saveBatch);
+            backToScanBtn.addEventListener('click', resumeScanningForMore);
+            downloadCsvBtn.addEventListener('click', exportToCsv);
+            clearAllBtn.addEventListener('click', clearAllHistory);
         });
 
-        // --- 通知 ---
         function showToast(message, duration = 2500) {
             toastEl.textContent = message;
             toastEl.classList.remove('hidden');
@@ -311,7 +415,6 @@
             toastTimer = setTimeout(() => toastEl.classList.add('hidden'), duration);
         }
 
-        // --- エリア表示 ---
         function updateAreaUI() {
             if (currentAreaId) {
                 currentAreaEl.textContent = currentAreaId;
@@ -319,7 +422,7 @@
                 areaIndicatorEl.classList.add('active');
                 areaIndicatorEl.setAttribute('aria-label', 'エリア選択済み');
             } else {
-                currentAreaEl.textContent = '⚠️ 未選択 (AR-...)';
+                currentAreaEl.textContent = '⚠️ 未選択 (Ar_...)';
                 currentAreaEl.style.color = '#dc2626';
                 areaIndicatorEl.classList.remove('active');
                 areaIndicatorEl.setAttribute('aria-label', 'エリア未選択');
@@ -336,47 +439,33 @@
 
             try {
                 if (!window.isSecureContext) {
-                    throw new Error(
-                        '安全な接続ではないためカメラを利用できません。HTTPSのURLで開いてください。'
-                    );
+                    throw new Error('安全な接続ではないためカメラを利用できません。HTTPSで開いてください。');
                 }
-
                 if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                    throw new Error(
-                        'このブラウザではカメラ機能を利用できません。最新のChromeまたはSafariで開いてください。'
-                    );
+                    throw new Error('このブラウザではカメラ機能を利用できません。');
                 }
-
                 if (typeof window.Html5Qrcode === 'undefined') {
-                    throw new Error(
-                        'QR読み取りライブラリを読み込めませんでした。インターネット接続を確認して再読み込みしてください。'
-                    );
+                    throw new Error('QR読み取りライブラリを読み込めませんでした。ネット接続を確認してください。');
                 }
 
-                if (!html5QrcodeScanner) {
-                    html5QrcodeScanner = new Html5Qrcode('reader');
-                }
+                if (!html5QrcodeScanner) html5QrcodeScanner = new Html5Qrcode('reader');
 
                 const config = {
-                    // QR解析を毎秒最大3回に抑え、CPU負荷を軽減
-                    fps: 3,
-                    // 読み取り枠を小さくして解析する範囲を縮小
+                    fps: 5,
                     qrbox: (width, height) => {
-                        const boxWidth = Math.max(100, Math.floor(Math.min(width, height) * 0.5));
+                        const boxWidth = Math.max(100, Math.floor(Math.min(width, height) * 0.6));
                         return {
                             width: Math.min(boxWidth, width),
-                            height: Math.min(Math.floor(boxWidth * 0.55), height)
+                            height: Math.min(Math.floor(boxWidth * 0.6), height)
                         };
                     },
                     aspectRatio: 1.333,
-                    // 写真撮影ではなく、このアプリのカメラ映像だけ低解像度を希望
                     videoConstraints: {
                         width: { ideal: 1280 },
                         height: { ideal: 720 }
                     }
                 };
 
-                // カメラ一覧を取得できる場合は背面カメラを優先して選択する
                 let cameraId = null;
                 try {
                     const cameras = await Html5Qrcode.getCameras();
@@ -387,7 +476,7 @@
                         cameraId = (backCamera || cameras[0]).id;
                     }
                 } catch (cameraListError) {
-                    console.warn('カメラ一覧を取得できません。背面カメラ指定で試します:', cameraListError);
+                    console.warn('カメラ一覧取得失敗。背面カメラ指定で試行:', cameraListError);
                 }
 
                 if (cameraId) {
@@ -402,163 +491,301 @@
                 }
 
                 cameraRunning = true;
-                cameraStatusEl.textContent = 'カメラ起動中です。バーコードをかざしてください。';
+                cameraStatusEl.textContent = currentAreaId
+                    ? `エリア ${currentAreaId} で商品を読み取っています。`
+                    : 'まずエリアバーコード（Ar_...）を読み取ってください。';
                 startCameraBtn.classList.add('hidden');
                 stopCameraBtn.classList.remove('hidden');
+                quantityEntryCardEl.classList.add('hidden');
             } catch (error) {
                 console.error('カメラ起動エラー:', error);
-
                 let message = error && error.message ? error.message : String(error);
                 if (error && error.name === 'NotAllowedError') {
-                    message = 'カメラへのアクセスが拒否されました。ブラウザのサイト設定でカメラを許可してください。';
-                } else if (error && error.name === 'NotFoundError') {
-                    message = '利用できるカメラが見つかりません。';
-                } else if (error && error.name === 'NotReadableError') {
-                    message = 'カメラを他のアプリが使用中か、カメラを起動できません。ほかのカメラアプリを閉じてください。';
-                } else if (error && error.name === 'OverconstrainedError') {
-                    message = '指定したカメラ条件に対応できません。別のカメラを選択してください。';
+                    message = 'カメラへのアクセスが拒否されました。設定で許可してください。';
                 }
-
                 cameraStatusEl.textContent = `起動失敗：${message}`;
                 startCameraBtn.textContent = 'もう一度試す';
                 startCameraBtn.classList.remove('hidden');
-                stopCameraBtn.classList.add('hidden');
-                startCameraBtn.disabled = false;
-
-                // 起動に失敗したオブジェクトは状態が不明な場合があるため再生成
                 try {
-                    if (html5QrcodeScanner) {
-                        await html5QrcodeScanner.clear();
-                    }
+                    if (html5QrcodeScanner) await html5QrcodeScanner.clear();
                 } catch (clearError) {
-                    console.warn('スキャナーの後処理:', clearError);
+                    console.warn('スキャナークリア:', clearError);
                 }
                 html5QrcodeScanner = null;
+                cameraRunning = false;
             } finally {
                 cameraStarting = false;
+                startCameraBtn.disabled = false;
             }
         }
 
-        function onScanFailure(_errorMessage) {
-            // 読み取り失敗は毎フレーム発生するため、画面には表示しない
-        }
+        function onScanFailure(_errorMessage) {}
 
-        // --- カメラ停止 ---
-        async function stopScanner() {
-            if (!html5QrcodeScanner || !cameraRunning) return;
-
-            stopCameraBtn.disabled = true;
-            cameraStatusEl.textContent = 'カメラを停止しています…';
-
-            try {
-                await html5QrcodeScanner.stop();
-                await html5QrcodeScanner.clear();
-                cameraRunning = false;
-                isProcessing = false;
-                html5QrcodeScanner = null;
-                cameraStatusEl.textContent = 'カメラを停止しました。再開するにはボタンを押してください。';
-                startCameraBtn.textContent = '📷 カメラを起動';
-                startCameraBtn.classList.remove('hidden');
-                stopCameraBtn.classList.add('hidden');
-            } catch (error) {
-                console.error('カメラ停止エラー:', error);
-                cameraStatusEl.textContent = `停止時のエラー：${error.message || error}`;
-            } finally {
-                stopCameraBtn.disabled = false;
-            }
-        }
-
-        // --- スキャン成功 ---
+        // --- 読み取り結果処理 ---
         function onScanSuccess(decodedText) {
-            if (isProcessing) return;
+            if (isProcessing || !cameraRunning) return;
 
-            if (decodedText.startsWith('AR-')) {
-                isProcessing = true;
-                currentAreaId = decodedText;
-                saveLocalData('inventory_current_area', currentAreaId);
-                updateAreaUI();
-                showToast(`エリアを「${decodedText}」に変更しました`);
-                setTimeout(() => { isProcessing = false; }, 1500);
-                return;
-            }
-
-            if (decodedText.startsWith('ITEM-')) {
-                if (!currentAreaId) {
+            // エリアバーコード
+            if (decodedText.startsWith('Ar_')) {
+                if (pendingItems.length > 0 && currentAreaId && currentAreaId !== decodedText) {
                     isProcessing = true;
-                    showToast('先にエリアバーコード（AR-...）をスキャンしてください');
-                    setTimeout(() => { isProcessing = false; }, 1500);
+                    showToast('読み取り済み商品があります。先に保存してください。', 3000);
+                    setTimeout(() => { isProcessing = false; }, 1200);
                     return;
                 }
 
-                isProcessing = true;
-                pendingItemId = decodedText;
-                modalItemTitleEl.textContent = decodedText;
-                quantityInputEl.value = '1';
-                quantityModalEl.classList.remove('hidden');
-
-                // 数量入力中はQR解析を止めて、余分な処理を減らす（カメラ映像は表示したまま）
-                try {
-                    if (html5QrcodeScanner && cameraRunning) {
-                        html5QrcodeScanner.pause();
-                    }
-                } catch (pauseError) {
-                    console.warn('QR解析の一時停止に失敗しました:', pauseError);
+                if (currentAreaId === decodedText) {
+                    isProcessing = true;
+                    showToast(`エリア ${decodedText} は選択済みです`);
+                    setTimeout(() => { isProcessing = false; }, 700);
+                    return;
                 }
 
-                setTimeout(() => {
-                    quantityInputEl.focus();
-                    quantityInputEl.select();
-                }, 100);
+                currentAreaId = decodedText;
+                playBeep('area'); // エリア用のピピッ音
+                updateAreaUI();
+                cameraStatusEl.textContent = `エリア ${decodedText} を選択しました。商品バーコードを読み取ってください。`;
+                showToast(`エリアを「${decodedText}」に設定しました`);
+                isProcessing = true;
+                setTimeout(() => { isProcessing = false; }, 1000);
+                return;
+            }
+
+            // 商品バーコード
+            if (decodedText.startsWith('ITEM_')) {
+                if (!currentAreaId) {
+                    isProcessing = true;
+                    showToast('先にエリアバーコード（Ar_...）を読み取ってください');
+                    setTimeout(() => { isProcessing = false; }, 1200);
+                    return;
+                }
+
+                if (pendingItems.some(item => item.item === decodedText)) {
+                    isProcessing = true;
+                    showToast(`${decodedText} はすでに読み取り済みです`, 1500);
+                    setTimeout(() => { isProcessing = false; }, 800);
+                    return;
+                }
+
+                playBeep('item'); // 商品用のピッ音
+                pendingItems.push({ item: decodedText, quantity: '' });
+                renderPendingPreview();
+                showToast(`${decodedText} を追加しました`);
+                isProcessing = true;
+                setTimeout(() => { isProcessing = false; }, 800);
                 return;
             }
 
             console.log('対象外のコード:', decodedText);
         }
 
-        // --- 数量確定 ---
-        function submitQuantity() {
-            const qty = Number.parseInt(quantityInputEl.value, 10);
-
-            if (!Number.isInteger(qty) || qty <= 0) {
-                alert('1以上の正しい個数を入力してください。');
+        // --- カメラ停止して数量入力へ ---
+        async function finishScanning() {
+            await stopScanner();
+            if (pendingItems.length === 0) {
+                cameraStatusEl.textContent = currentAreaId
+                    ? '読み取りを終了しました。商品がありません。'
+                    : '読み取りを終了しました。エリアバーコードを読み取ってください。';
                 return;
             }
-
-            if (!pendingItemId) {
-                closeModal();
-                return;
-            }
-
-            const record = {
-                id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-                datetime: new Date().toLocaleString('ja-JP'),
-                area: currentAreaId,
-                item: pendingItemId,
-                quantity: qty
-            };
-
-            inventoryData.unshift(record);
-            saveLocalData('inventory_records', JSON.stringify(inventoryData));
-            showToast(`${pendingItemId} を ${qty} 個記録しました`);
-            renderHistory();
-            closeModal();
+            buildQuantityEntryList();
+            quantityEntryCardEl.classList.remove('hidden');
+            cameraStatusEl.textContent = 'カメラ停止中。各商品の数量を入力し、一括保存してください。';
+            quantityEntryCardEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
 
-        // --- 数量入力を閉じる ---
-        function closeModal() {
-            quantityModalEl.classList.add('hidden');
-            pendingItemId = '';
-
-            // 数量入力が終わったらQR解析を再開
-            try {
-                if (html5QrcodeScanner && cameraRunning) {
-                    html5QrcodeScanner.resume();
-                }
-            } catch (resumeError) {
-                console.warn('QR解析の再開に失敗しました:', resumeError);
+        async function stopScanner() {
+            if (!html5QrcodeScanner || !cameraRunning) {
+                cameraRunning = false;
+                startCameraBtn.classList.remove('hidden');
+                stopCameraBtn.classList.add('hidden');
+                return;
             }
 
-            setTimeout(() => { isProcessing = false; }, 800);
+            stopCameraBtn.disabled = true;
+            cameraStatusEl.textContent = 'カメラを停止しています…';
+            try {
+                await html5QrcodeScanner.stop();
+                await html5QrcodeScanner.clear();
+                html5QrcodeScanner = null;
+                cameraRunning = false;
+                isProcessing = false;
+                startCameraBtn.textContent = '📷 読み取り開始';
+                startCameraBtn.classList.remove('hidden');
+                stopCameraBtn.classList.add('hidden');
+            } catch (error) {
+                console.error('カメラ停止エラー:', error);
+                cameraStatusEl.textContent = `カメラ停止エラー：${error.message || error}`;
+            } finally {
+                stopCameraBtn.disabled = false;
+            }
+        }
+
+        // --- プレビュー表示（スキャン中） ---
+        function renderPendingPreview() {
+            pendingCountEl.textContent = String(pendingItems.length);
+            pendingPreviewEl.querySelectorAll('.pending-row').forEach(element => element.remove());
+            pendingEmptyEl.classList.toggle('hidden', pendingItems.length > 0);
+
+            pendingItems.forEach((item, index) => {
+                const row = document.createElement('div');
+                row.className = 'pending-row';
+
+                const code = document.createElement('span');
+                code.className = 'pending-code';
+                code.textContent = item.item;
+
+                const right = document.createElement('div');
+                right.style.display = 'flex';
+                right.style.alignItems = 'center';
+                right.style.gap = '8px';
+
+                const tag = document.createElement('span');
+                tag.className = 'pending-tag';
+                tag.textContent = 'スキャン済';
+
+                // スキャン中の個別削除ボタン
+                const removeBtn = document.createElement('button');
+                removeBtn.className = 'delete-button';
+                removeBtn.type = 'button';
+                removeBtn.textContent = '✕ 削除';
+                removeBtn.setAttribute('aria-label', `${item.item} を取り消し`);
+                removeBtn.addEventListener('click', () => {
+                    removePendingItem(index);
+                });
+
+                right.append(tag, removeBtn);
+                row.append(code, right);
+                pendingPreviewEl.appendChild(row);
+            });
+        }
+
+        // --- 数量入力リスト作成 ---
+        function buildQuantityEntryList() {
+            quantityEntryListEl.replaceChildren();
+            entryAreaLabelEl.textContent = currentAreaId ? `エリア：${currentAreaId}` : '';
+
+            pendingItems.forEach((item, index) => {
+                const row = document.createElement('div');
+                row.className = 'quantity-entry-row';
+
+                const info = document.createElement('div');
+                info.style.minWidth = '0';
+                info.style.flex = '1';
+
+                const code = document.createElement('div');
+                code.className = 'entry-code';
+                code.textContent = item.item;
+
+                const sub = document.createElement('div');
+                sub.className = 'pending-tag';
+                sub.textContent = `商品 ${index + 1}`;
+                info.append(code, sub);
+
+                const input = document.createElement('input');
+                input.className = 'entry-quantity';
+                input.type = 'number';
+                input.min = '1';
+                input.step = '1';
+                input.inputMode = 'numeric';
+                input.autocomplete = 'off';
+                input.placeholder = '数量';
+                input.setAttribute('aria-label', `${item.item} の数量`);
+                input.value = item.quantity;
+                input.addEventListener('input', () => { item.quantity = input.value; });
+                input.addEventListener('focus', () => input.select()); // タップ時に即上書き可能
+
+                // 数量入力時の個別削除ボタン
+                const removeBtn = document.createElement('button');
+                removeBtn.className = 'delete-button';
+                removeBtn.type = 'button';
+                removeBtn.textContent = '✕';
+                removeBtn.setAttribute('aria-label', `${item.item} を除外`);
+                removeBtn.addEventListener('click', () => {
+                    syncQuantityInputs();
+                    removePendingItem(index);
+                    if (pendingItems.length === 0) {
+                        quantityEntryCardEl.classList.add('hidden');
+                        cameraStatusEl.textContent = '商品がすべて削除されました。追加でスキャンしてください。';
+                    } else {
+                        buildQuantityEntryList();
+                    }
+                });
+
+                row.append(info, input, removeBtn);
+                quantityEntryListEl.appendChild(row);
+            });
+        }
+
+        function syncQuantityInputs() {
+            const inputs = [...quantityEntryListEl.querySelectorAll('.entry-quantity')];
+            pendingItems.forEach((item, index) => {
+                if (inputs[index]) item.quantity = inputs[index].value.trim();
+            });
+        }
+
+        function removePendingItem(index) {
+            if (index < 0 || index >= pendingItems.length) return;
+            const removed = pendingItems.splice(index, 1)[0];
+            showToast(`${removed.item} を取り消しました`);
+            renderPendingPreview();
+        }
+
+        // --- 追加スキャン ---
+        async function resumeScanningForMore() {
+            syncQuantityInputs();
+            quantityEntryCardEl.classList.add('hidden');
+            await initScanner();
+        }
+
+        // --- 一括保存 ---
+        function saveBatch() {
+            if (!pendingItems.length) {
+                showToast('保存する商品がありません');
+                return;
+            }
+
+            syncQuantityInputs();
+
+            const invalid = pendingItems.find(item => {
+                const qty = Number(item.quantity);
+                return item.quantity === '' || !Number.isInteger(qty) || qty <= 0;
+            });
+            if (invalid) {
+                showToast(`${invalid.item} の数量を1以上の整数で入力してください`, 3500);
+                const invalidIndex = pendingItems.indexOf(invalid);
+                const inputs = quantityEntryListEl.querySelectorAll('.entry-quantity');
+                inputs[invalidIndex]?.focus();
+                return;
+            }
+
+            const now = new Date();
+            const pad = n => String(n).padStart(2, '0');
+            const timestamp = `${now.getFullYear()}/${pad(now.getMonth() + 1)}/${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+
+            const newRecords = pendingItems.map(item => ({
+                id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+                datetime: timestamp,
+                area: currentAreaId,
+                item: item.item,
+                quantity: Number(item.quantity)
+            }));
+
+            const updatedInventory = [...newRecords, ...inventoryData];
+            if (!saveLocalData('inventory_records', JSON.stringify(updatedInventory))) return;
+
+            inventoryData = updatedInventory;
+            const savedCount = newRecords.length;
+            pendingItems = [];
+            renderPendingPreview();
+            quantityEntryListEl.replaceChildren();
+            quantityEntryCardEl.classList.add('hidden');
+            renderHistory();
+            showToast(`${savedCount}商品を一括保存しました`);
+            cameraStatusEl.textContent = '保存しました。次のスキャンは「読み取り開始」を押してください。';
+            startCameraBtn.textContent = '📷 読み取り開始';
+            startCameraBtn.classList.remove('hidden');
+            stopCameraBtn.classList.add('hidden');
         }
 
         // --- 履歴描画 ---
@@ -566,14 +793,12 @@
             dataCountEl.textContent = inventoryData.length;
             historyListEl.querySelectorAll('.history-item').forEach(element => element.remove());
 
-            if (inventoryData.length === 0) {
-                emptyMessageEl.classList.remove('hidden');
-                downloadCsvBtn.classList.add('hidden');
-                return;
-            }
+            const hasData = inventoryData.length > 0;
+            emptyMessageEl.classList.toggle('hidden', hasData);
+            downloadCsvBtn.classList.toggle('hidden', !hasData);
+            clearAllBtn.classList.toggle('hidden', !hasData);
 
-            emptyMessageEl.classList.add('hidden');
-            downloadCsvBtn.classList.remove('hidden');
+            if (!hasData) return;
 
             inventoryData.forEach(data => {
                 const row = document.createElement('div');
@@ -617,56 +842,54 @@
             });
         }
 
-        // --- 履歴削除 ---
+        // 1件削除
         function deleteRecord(id) {
             if (!confirm('この記録を削除してもよろしいですか？')) return;
-
-            inventoryData = inventoryData.filter(item => item.id !== id);
-            saveLocalData('inventory_records', JSON.stringify(inventoryData));
+            const updatedInventory = inventoryData.filter(item => item.id !== id);
+            if (!saveLocalData('inventory_records', JSON.stringify(updatedInventory))) return;
+            inventoryData = updatedInventory;
             showToast('データを削除しました');
             renderHistory();
+        }
+
+        // 全履歴クリア
+        function clearAllHistory() {
+            if (!inventoryData.length) return;
+            const count = inventoryData.length;
+            const ok = confirm(`【確認】\n保存されている全 ${count} 件の棚卸データを消去しますか？\n※この操作は取り消せません。必要に応じて事前にCSV出力を行ってください。`);
+            if (!ok) return;
+
+            localStorage.removeItem('inventory_records');
+            inventoryData = [];
+            renderHistory();
+            showToast(`全 ${count} 件のデータを消去しました`);
         }
 
         // --- CSV出力 ---
         function exportToCsv() {
             if (!inventoryData.length) return;
 
-            const escapeCsv = value =>
-                `"${String(value ?? '').replace(/"/g, '""')}"`;
-
+            const escapeCsv = value => `"${String(value ?? '').replace(/"/g, '""')}"`;
             const rows = [
                 ['日時', 'エリアID', '品物ID', '個数'],
-                ...inventoryData.map(row => [
-                    row.datetime,
-                    row.area,
-                    row.item,
-                    row.quantity
-                ])
+                ...inventoryData.map(row => [row.datetime, row.area, row.item, row.quantity])
             ];
-
-            // Excelで日本語が文字化けしにくいようBOMを付ける
-            const csvContent = '\uFEFF' + rows
-                .map(row => row.map(escapeCsv).join(','))
-                .join('\r\n');
-
-            const blob = new Blob([csvContent], {
-                type: 'text/csv;charset=utf-8;'
-            });
-
+            const csvContent = '\uFEFF' + rows.map(row => row.map(escapeCsv).join(',')).join('\r\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
-            const dateStr = new Date().toISOString().slice(0, 10);
-
+            const now = new Date();
+            const pad = n => String(n).padStart(2, '0');
+            const dateStr = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}`;
             link.href = url;
             link.download = `棚卸データ_${dateStr}.csv`;
             document.body.appendChild(link);
             link.click();
             link.remove();
-
             setTimeout(() => URL.revokeObjectURL(url), 1000);
         }
-
     })();
     </script>
 </body>
 </html>
+```
