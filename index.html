@@ -3,115 +3,244 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#2563eb">
     <title>棚卸スキャンアプリ</title>
-    <!-- Tailwind CSS for styling -->
+
+    <!-- インターネット接続が必要です -->
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-    <!-- html5-qrcode library for barcode scanning -->
     <script src="https://unpkg.com/html5-qrcode"></script>
+
     <style>
-        /* カメラ映像のミラー反転を防止、およびレスポンシブ対応 */
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            background: #f3f4f6;
+            color: #1f2937;
+            font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        }
+
+        button, input { font: inherit; }
+        button { cursor: pointer; }
+        button:disabled { cursor: not-allowed; opacity: .6; }
+
+        .header {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            padding: 16px;
+            background: #2563eb;
+            color: white;
+            box-shadow: 0 2px 8px #0002;
+        }
+
+        .header h1 { margin: 0; font-size: 1.2rem; }
+        .container {
+            width: min(100% - 24px, 520px);
+            margin: 16px auto 40px;
+        }
+
+        .card {
+            margin-bottom: 16px;
+            padding: 16px;
+            border: 1px solid #e5e7eb;
+            border-radius: 14px;
+            background: white;
+            box-shadow: 0 1px 3px #0000000a;
+        }
+
+        .section-title { margin: 0 0 12px; font-size: 1rem; }
+        .area-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+        .muted { color: #6b7280; font-size: .85rem; }
+        #currentArea { margin: 4px 0 0; font-size: 1.15rem; font-weight: 700; overflow-wrap: anywhere; }
+        #areaIndicator { width: 12px; height: 12px; flex: 0 0 auto; border-radius: 50%; background: #ef4444; }
+        #areaIndicator.active { background: #22c55e; }
+
+        #reader {
+            width: 100%;
+            min-height: 180px;
+            aspect-ratio: 4 / 3;
+            overflow: hidden;
+            border: 1px solid #d1d5db;
+            border-radius: 10px;
+            background: #111827;
+        }
+
+        /* html5-qrcode が作る映像サイズを無理に固定しない */
         #reader video {
-            transform: none !important;
-            object-fit: cover !important;
-            width: 100% !important;
-            height: 100% !important;
+            display: block;
+            max-width: 100% !important;
+            object-fit: contain !important;
+        }
+
+        #reader img { max-width: 100%; }
+        #reader__scan_region { min-height: 140px; }
+        #reader__dashboard { padding: 8px; }
+
+        .button {
+            display: block;
+            width: 100%;
+            border: 0;
+            border-radius: 10px;
+            padding: 12px 16px;
+            font-weight: 700;
+        }
+
+        .primary { background: #2563eb; color: white; }
+        .secondary { background: #f3f4f6; color: #374151; }
+        .danger { background: #fee2e2; color: #b91c1c; }
+        .button-row { display: flex; gap: 8px; }
+        .button-row .button { flex: 1; }
+        #cameraStatus { margin: 10px 0 0; overflow-wrap: anywhere; }
+        #historyList { display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto; }
+        .history-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            background: #f9fafb;
+            font-size: .85rem;
+        }
+        .history-main { min-width: 0; overflow-wrap: anywhere; }
+        .history-title { font-weight: 700; }
+        .history-meta { margin-top: 4px; color: #6b7280; font-size: .75rem; }
+        .history-qty { white-space: nowrap; font-size: 1rem; font-weight: 800; }
+        .delete-button {
+            border: 0;
+            border-radius: 8px;
+            padding: 6px 8px;
+            background: #fee2e2;
+            color: #b91c1c;
+        }
+
+        .hidden { display: none !important; }
+        .modal {
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            background: #0009;
+        }
+        .modal-panel {
+            width: min(100%, 360px);
+            padding: 24px;
+            border-radius: 16px;
+            background: white;
+            box-shadow: 0 12px 40px #0004;
+        }
+        .modal-panel h3 { margin: 4px 0 16px; overflow-wrap: anywhere; }
+        .modal-panel label { display: block; margin-bottom: 6px; color: #6b7280; font-size: .85rem; }
+        #quantityInput {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #d1d5db;
+            border-radius: 10px;
+            background: #f9fafb;
+            text-align: center;
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+        #toast {
+            position: fixed;
+            z-index: 120;
+            left: 50%;
+            bottom: 20px;
+            transform: translateX(-50%);
+            width: max-content;
+            max-width: calc(100% - 32px);
+            padding: 12px 16px;
+            border-radius: 999px;
+            background: #111827;
+            color: white;
+            font-size: .85rem;
+            box-shadow: 0 4px 16px #0003;
+        }
+        @media (max-width: 360px) {
+            .header h1 { font-size: 1rem; }
+            .card { padding: 12px; }
         }
     </style>
 </head>
-<body class="bg-gray-100 text-gray-800 font-sans min-h-screen flex flex-col">
 
-    <!-- ヘッダー -->
-    <header class="bg-blue-600 text-white p-4 shadow-md sticky top-0 z-50 flex justify-between items-center">
-        <h1 class="text-xl font-bold flex items-center gap-2">
-            📦 棚卸スキャン
-        </h1>
-        <div class="text-sm bg-blue-700 px-3 py-1 rounded-full shadow-inner">
-            Web App
-        </div>
+<body>
+    <header class="header">
+        <h1>📦 棚卸スキャン</h1>
+        <span>Web App</span>
     </header>
 
-    <main class="flex-1 p-4 max-w-md mx-auto w-full space-y-4 pb-24">
-        
-        <!-- 現在の選択ステータス -->
-        <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex justify-between items-center">
-            <div>
-                <p class="text-xs text-gray-500 font-medium">現在の棚卸エリア</p>
-                <p id="currentArea" class="text-lg font-bold text-blue-600">⚠️ 未選択 (Ar_...)</p>
+    <main class="container">
+        <section class="card">
+            <div class="area-row">
+                <div>
+                    <div class="muted">現在の棚卸エリア</div>
+                    <p id="currentArea">⚠️ 未選択 (Ar_...)</p>
+                </div>
+                <div id="areaIndicator" aria-label="エリア未選択"></div>
             </div>
-            <div id="areaIndicator" class="h-3 w-3 rounded-full bg-red-500 animate-pulse"></div>
-        </div>
+        </section>
 
-        <!-- スキャナーセクション -->
-        <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200 space-y-3">
-            <h2 class="text-sm font-bold text-gray-700 flex items-center gap-1">
-                📷 バーコードリーダー
-            </h2>
-            <div id="reader" class="overflow-hidden rounded-lg bg-black aspect-video w-full border border-gray-300"></div>
-            <p class="text-xs text-center text-gray-500">
-                エリアバーコード(<span class="font-mono bg-gray-100 px-1 rounded">Ar_</span>) または 品物バーコード(<span class="font-mono bg-gray-100 px-1 rounded">ITEM_</span>) をかざしてください
+        <section class="card">
+            <h2 class="section-title">📷 バーコードリーダー</h2>
+            <div id="reader"></div>
+            <button id="startCameraBtn" class="button primary" type="button">📷 カメラを起動</button>
+            <button id="stopCameraBtn" class="button secondary hidden" type="button" style="margin-top:8px">カメラを停止</button>
+            <p id="cameraStatus" class="muted" role="status" aria-live="polite">
+                ボタンを押してカメラを起動してください。
             </p>
-        </div>
+            <p class="muted">エリアバーコード (Ar_) または品物バーコード (ITEM_) を読み取ってください。</p>
+        </section>
 
-        <!-- データ履歴セクション -->
-        <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200 space-y-3">
-            <div class="flex justify-between items-center">
-                <h2 class="text-sm font-bold text-gray-700 flex items-center gap-1">
-                    📊 スキャンデータ履歴 (<span id="dataCount">0</span>件)
-                </h2>
-                <button id="downloadCsv" class="text-xs text-blue-600 font-bold hover:underline hidden">
-                    CSV出力
-                </button>
+        <section class="card">
+            <div class="area-row" style="margin-bottom:12px">
+                <h2 class="section-title" style="margin:0">📊 スキャン履歴 (<span id="dataCount">0</span>件)</h2>
+                <button id="downloadCsv" class="secondary hidden" type="button" style="padding:8px;border:0;border-radius:8px">CSV出力</button>
             </div>
-            
-            <div id="historyList" class="space-y-2 max-h-64 overflow-y-auto pr-1">
-                <!-- 履歴が空の時の表示 -->
-                <p id="emptyMessage" class="text-center text-gray-400 py-8 text-sm">
-                    データがありません。バーコードをスキャンしてください。
-                </p>
+            <div id="historyList">
+                <p id="emptyMessage" class="muted" style="text-align:center;padding:24px 0">データがありません。バーコードをスキャンしてください。</p>
             </div>
-        </div>
-
+        </section>
     </main>
 
-    <!-- 個数入力ダイアログ (モーダル) -->
-    <div id="quantityModal" class="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 hidden animate-fade-in">
-        <div class="bg-white rounded-2xl w-full max-w-xs p-6 shadow-xl space-y-4">
-            <div class="text-center space-y-1">
-                <p class="text-xs font-bold text-green-600 tracking-wider uppercase">品物を検知しました</p>
-                <h3 id="modalItemTitle" class="text-lg font-black text-gray-900 truncate">ITEM_001</h3>
-            </div>
-            
-            <div>
-                <label for="quantityInput" class="block text-xs font-medium text-gray-500 mb-1">数量を入力してください</label>
-                <input type="number" id="quantityInput" min="1" value="1" 
-                       class="w-full text-center text-2xl font-bold p-3 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:outline-none bg-gray-50">
-            </div>
-
-            <div class="flex gap-2 pt-2">
-                <button id="cancelModalBtn" class="flex-1 py-3 text-sm font-bold text-gray-500 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors">
-                    キャンセル
-                </button>
-                <button id="submitModalBtn" class="flex-1 py-3 text-sm font-bold text-white bg-blue-600 rounded-xl hover:bg-blue-700 shadow-md shadow-blue-200 transition-colors">
-                    確定して再開
-                </button>
+    <div id="quantityModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modalItemTitle">
+        <div class="modal-panel">
+            <div class="muted" style="color:#16a34a;font-weight:700">品物を検知しました</div>
+            <h3 id="modalItemTitle">ITEM_001</h3>
+            <label for="quantityInput">数量を入力してください</label>
+            <input type="number" id="quantityInput" min="1" step="1" value="1" inputmode="numeric">
+            <div class="button-row" style="margin-top:16px">
+                <button id="cancelModalBtn" class="button secondary" type="button">キャンセル</button>
+                <button id="submitModalBtn" class="button primary" type="button">確定して再開</button>
             </div>
         </div>
     </div>
 
-    <!-- トースト通知 -->
-    <div id="toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-gray-900/90 text-white text-xs px-4 py-3 rounded-full shadow-lg z-50 font-medium transition-all duration-300 opacity-0 pointer-events-none transform translate-y-2">
-        トーストメッセージ
-    </div>
+    <div id="toast" class="hidden" role="status" aria-live="polite"></div>
 
     <script>
-        // --- 状態管理 ---
-        let currentAreaId = localStorage.getItem('inventory_current_area') || '';
-        let inventoryData = JSON.parse(localStorage.getItem('inventory_records')) || [];
-        let html5QrcodeScanner = null;
-        let isProcessing = false; // 重複読み込み防止フラグ
-        let pendingItemId = '';   // 数量入力待ちの品物ID
+    (() => {
+        'use strict';
 
-        // --- DOM要素 ---
+        // --- 状態 ---
+        let currentAreaId = '';
+        let inventoryData = [];
+        let html5QrcodeScanner = null;
+        let isProcessing = false;
+        let cameraStarting = false;
+        let cameraRunning = false;
+        let pendingItemId = '';
+        let toastTimer = null;
+
+        // --- DOM ---
         const currentAreaEl = document.getElementById('currentArea');
         const areaIndicatorEl = document.getElementById('areaIndicator');
         const quantityModalEl = document.getElementById('quantityModal');
@@ -124,236 +253,395 @@
         const dataCountEl = document.getElementById('dataCount');
         const downloadCsvBtn = document.getElementById('downloadCsv');
         const toastEl = document.getElementById('toast');
+        const startCameraBtn = document.getElementById('startCameraBtn');
+        const stopCameraBtn = document.getElementById('stopCameraBtn');
+        const cameraStatusEl = document.getElementById('cameraStatus');
 
-        // --- 初期化処理 ---
-        window.addEventListener('DOMContentLoaded', () => {
-            updateAreaUI();
-            renderHistory();
-            initScanner();
-            
-            // イベントリスナー登録
-            submitModalBtn.addEventListener('click', submitQuantity);
-            cancelModalBtn.addEventListener('click', closeModal);
-            downloadCsvBtn.addEventListener('click', exportToCsv);
-            
-            // Enterキーで確定できるように
-            quantityInputEl.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') submitQuantity();
-            });
-        });
-
-        // --- トースト通知 ---
-        function showToast(message, duration = 2500) {
-            toastEl.innerText = message;
-            toastEl.classList.remove('opacity-0', 'translate-y-2', 'pointer-events-none');
-            toastEl.classList.add('opacity-100', 'translate-y-0');
-            
-            setTimeout(() => {
-                toastEl.classList.remove('opacity-100', 'translate-y-0');
-                toastEl.classList.add('opacity-0', 'translate-y-2', 'pointer-events-none');
-            }, duration);
-        }
-
-        // --- エリアUI更新 ---
-        function updateAreaUI() {
-            if (currentAreaId) {
-                currentAreaEl.innerText = currentAreaId;
-                currentAreaEl.classList.remove('text-red-500');
-                currentAreaEl.classList.add('text-blue-600');
-                areaIndicatorEl.classList.remove('bg-red-500');
-                areaIndicatorEl.classList.add('bg-green-500');
-            } else {
-                currentAreaEl.innerText = '⚠️ 未選択 (Ar_...)';
-                currentAreaEl.classList.remove('text-blue-600');
-                currentAreaEl.classList.add('text-red-500');
-                areaIndicatorEl.classList.remove('bg-green-500');
-                areaIndicatorEl.classList.add('bg-red-500');
+        // --- localStorageを安全に読み込む ---
+        function loadStoredData(key, fallback) {
+            try {
+                const raw = localStorage.getItem(key);
+                return raw === null ? fallback : JSON.parse(raw);
+            } catch (error) {
+                console.error(`保存データ読み込みエラー (${key}):`, error);
+                return fallback;
             }
         }
 
-        // --- スキャナー初期化 ---
-        function initScanner() {
-            html5QrcodeScanner = new Html5Qrcode("reader");
-            const config = { 
-                fps: 10, 
-                qrbox: function(width, height) {
-                    // スマホの画面幅に合わせて読み取りボックスのサイズを動的に調整
-                    const size = Math.min(width, height) * 0.7;
-                    return { width: size, height: size * 0.5 }; // バーコード用に横長にする
-                },
-                rememberLastUsedCamera: true
-            };
-
-            html5QrcodeScanner.start(
-                { facingMode: "environment" }, // 背面カメラ優先
-                config,
-                onScanSuccess
-            ).catch(err => {
-                console.error("カメラ起動エラー:", err);
-                historyListEl.innerHTML = `<p class="text-center text-red-500 py-4 text-xs">カメラの起動に失敗しました。カメラのアクセス権限を確認してください。</p>`;
-            });
+        try {
+            currentAreaId = localStorage.getItem('inventory_current_area') || '';
+        } catch (error) {
+            console.warn('エリア保存領域を利用できません:', error);
         }
 
-        // --- スキャン成功時の処理 ---
+        const storedInventory = loadStoredData('inventory_records', []);
+        inventoryData = Array.isArray(storedInventory) ? storedInventory : [];
+
+        function saveLocalData(key, value) {
+            try {
+                localStorage.setItem(key, value);
+                return true;
+            } catch (error) {
+                console.error(`保存エラー (${key}):`, error);
+                showToast('端末にデータを保存できませんでした。ブラウザ設定を確認してください。');
+                return false;
+            }
+        }
+
+        // --- 初期化 ---
+        document.addEventListener('DOMContentLoaded', () => {
+            updateAreaUI();
+            renderHistory();
+
+            startCameraBtn.addEventListener('click', initScanner);
+            stopCameraBtn.addEventListener('click', stopScanner);
+            submitModalBtn.addEventListener('click', submitQuantity);
+            cancelModalBtn.addEventListener('click', closeModal);
+            downloadCsvBtn.addEventListener('click', exportToCsv);
+
+            quantityInputEl.addEventListener('keydown', event => {
+                if (event.key === 'Enter') submitQuantity();
+            });
+        });
+
+        // --- 通知 ---
+        function showToast(message, duration = 2500) {
+            toastEl.textContent = message;
+            toastEl.classList.remove('hidden');
+            if (toastTimer) clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => toastEl.classList.add('hidden'), duration);
+        }
+
+        // --- エリア表示 ---
+        function updateAreaUI() {
+            if (currentAreaId) {
+                currentAreaEl.textContent = currentAreaId;
+                currentAreaEl.style.color = '#2563eb';
+                areaIndicatorEl.classList.add('active');
+                areaIndicatorEl.setAttribute('aria-label', 'エリア選択済み');
+            } else {
+                currentAreaEl.textContent = '⚠️ 未選択 (Ar_...)';
+                currentAreaEl.style.color = '#dc2626';
+                areaIndicatorEl.classList.remove('active');
+                areaIndicatorEl.setAttribute('aria-label', 'エリア未選択');
+            }
+        }
+
+        // --- カメラ起動 ---
+        async function initScanner() {
+            if (cameraStarting || cameraRunning) return;
+
+            cameraStarting = true;
+            startCameraBtn.disabled = true;
+            cameraStatusEl.textContent = 'カメラを起動しています…';
+
+            try {
+                if (!window.isSecureContext) {
+                    throw new Error(
+                        '安全な接続ではないためカメラを利用できません。HTTPSのURLで開いてください。'
+                    );
+                }
+
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    throw new Error(
+                        'このブラウザではカメラ機能を利用できません。最新のChromeまたはSafariで開いてください。'
+                    );
+                }
+
+                if (typeof window.Html5Qrcode === 'undefined') {
+                    throw new Error(
+                        'QR読み取りライブラリを読み込めませんでした。インターネット接続を確認して再読み込みしてください。'
+                    );
+                }
+
+                if (!html5QrcodeScanner) {
+                    html5QrcodeScanner = new Html5Qrcode('reader');
+                }
+
+                const config = {
+                    fps: 10,
+                    qrbox: (width, height) => {
+                        const boxWidth = Math.max(100, Math.floor(Math.min(width, height) * 0.7));
+                        return {
+                            width: Math.min(boxWidth, width),
+                            height: Math.min(Math.floor(boxWidth * 0.55), height)
+                        };
+                    },
+                    aspectRatio: 1.333
+                };
+
+                // カメラ一覧を取得できる場合は背面カメラを優先して選択する
+                let cameraId = null;
+                try {
+                    const cameras = await Html5Qrcode.getCameras();
+                    if (cameras && cameras.length) {
+                        const backCamera = cameras.find(camera =>
+                            /back|rear|environment|背面|後ろ/i.test(camera.label || '')
+                        );
+                        cameraId = (backCamera || cameras[0]).id;
+                    }
+                } catch (cameraListError) {
+                    console.warn('カメラ一覧を取得できません。背面カメラ指定で試します:', cameraListError);
+                }
+
+                if (cameraId) {
+                    await html5QrcodeScanner.start(cameraId, config, onScanSuccess, onScanFailure);
+                } else {
+                    await html5QrcodeScanner.start(
+                        { facingMode: { ideal: 'environment' } },
+                        config,
+                        onScanSuccess,
+                        onScanFailure
+                    );
+                }
+
+                cameraRunning = true;
+                cameraStatusEl.textContent = 'カメラ起動中です。バーコードをかざしてください。';
+                startCameraBtn.classList.add('hidden');
+                stopCameraBtn.classList.remove('hidden');
+            } catch (error) {
+                console.error('カメラ起動エラー:', error);
+
+                let message = error && error.message ? error.message : String(error);
+                if (error && error.name === 'NotAllowedError') {
+                    message = 'カメラへのアクセスが拒否されました。ブラウザのサイト設定でカメラを許可してください。';
+                } else if (error && error.name === 'NotFoundError') {
+                    message = '利用できるカメラが見つかりません。';
+                } else if (error && error.name === 'NotReadableError') {
+                    message = 'カメラを他のアプリが使用中か、カメラを起動できません。ほかのカメラアプリを閉じてください。';
+                } else if (error && error.name === 'OverconstrainedError') {
+                    message = '指定したカメラ条件に対応できません。別のカメラを選択してください。';
+                }
+
+                cameraStatusEl.textContent = `起動失敗：${message}`;
+                startCameraBtn.textContent = 'もう一度試す';
+                startCameraBtn.classList.remove('hidden');
+                stopCameraBtn.classList.add('hidden');
+                startCameraBtn.disabled = false;
+
+                // 起動に失敗したオブジェクトは状態が不明な場合があるため再生成
+                try {
+                    if (html5QrcodeScanner) {
+                        await html5QrcodeScanner.clear();
+                    }
+                } catch (clearError) {
+                    console.warn('スキャナーの後処理:', clearError);
+                }
+                html5QrcodeScanner = null;
+            } finally {
+                cameraStarting = false;
+            }
+        }
+
+        function onScanFailure(_errorMessage) {
+            // 読み取り失敗は毎フレーム発生するため、画面には表示しない
+        }
+
+        // --- カメラ停止 ---
+        async function stopScanner() {
+            if (!html5QrcodeScanner || !cameraRunning) return;
+
+            stopCameraBtn.disabled = true;
+            cameraStatusEl.textContent = 'カメラを停止しています…';
+
+            try {
+                await html5QrcodeScanner.stop();
+                await html5QrcodeScanner.clear();
+                cameraRunning = false;
+                isProcessing = false;
+                html5QrcodeScanner = null;
+                cameraStatusEl.textContent = 'カメラを停止しました。再開するにはボタンを押してください。';
+                startCameraBtn.textContent = '📷 カメラを起動';
+                startCameraBtn.classList.remove('hidden');
+                stopCameraBtn.classList.add('hidden');
+            } catch (error) {
+                console.error('カメラ停止エラー:', error);
+                cameraStatusEl.textContent = `停止時のエラー：${error.message || error}`;
+            } finally {
+                stopCameraBtn.disabled = false;
+            }
+        }
+
+        // --- スキャン成功 ---
         function onScanSuccess(decodedText) {
-            if (isProcessing) return; // ダイアログ表示中などは無視
+            if (isProcessing) return;
 
             if (decodedText.startsWith('Ar_')) {
-                // エリアIDの処理
                 isProcessing = true;
                 currentAreaId = decodedText;
-                localStorage.setItem('inventory_current_area', currentAreaId);
+                saveLocalData('inventory_current_area', currentAreaId);
                 updateAreaUI();
                 showToast(`エリアを「${decodedText}」に変更しました`);
-                
-                // 少し待ってから次のスキャンを許可
                 setTimeout(() => { isProcessing = false; }, 1500);
+                return;
+            }
 
-            } else if (decodedText.startsWith('ITEM_')) {
-                // 品物IDの処理
+            if (decodedText.startsWith('ITEM_')) {
                 if (!currentAreaId) {
-                    showToast('⚠️ 最初にエリアバーコード(Ar_...)をスキャンしてください');
+                    isProcessing = true;
+                    showToast('先にエリアバーコード（Ar_...）をスキャンしてください');
+                    setTimeout(() => { isProcessing = false; }, 1500);
                     return;
                 }
-                
+
                 isProcessing = true;
                 pendingItemId = decodedText;
-                
-                // モーダル表示
-                modalItemTitleEl.innerText = decodedText;
-                quantityInputEl.value = 1;
+                modalItemTitleEl.textContent = decodedText;
+                quantityInputEl.value = '1';
                 quantityModalEl.classList.remove('hidden');
-                
-                // 入力欄にオートフォーカス (モバイル端末によってはキーボードが出ない場合もあります)
+
                 setTimeout(() => {
                     quantityInputEl.focus();
                     quantityInputEl.select();
                 }, 100);
-
-            } else {
-                // 対象外のバーコードはスルー (UIを出さない)
-                console.log("対象外のコード:", decodedText);
-            }
-        }
-
-        // --- 個数確定処理 ---
-        function submitQuantity() {
-            const qty = parseInt(quantityInputEl.value, 10);
-            if (isNaN(qty) || qty <= 0) {
-                alert('1以上の正しい個数を入力してください');
                 return;
             }
 
-            // データオブジェクト作成
+            console.log('対象外のコード:', decodedText);
+        }
+
+        // --- 数量確定 ---
+        function submitQuantity() {
+            const qty = Number.parseInt(quantityInputEl.value, 10);
+
+            if (!Number.isInteger(qty) || qty <= 0) {
+                alert('1以上の正しい個数を入力してください。');
+                return;
+            }
+
+            if (!pendingItemId) {
+                closeModal();
+                return;
+            }
+
             const record = {
-                id: Date.now().toString(), // 削除用のユニークキー
+                id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
                 datetime: new Date().toLocaleString('ja-JP'),
                 area: currentAreaId,
                 item: pendingItemId,
                 quantity: qty
             };
 
-            // データの保存
-            inventoryData.unshift(record); // 先頭に追加して新しい順にする
-            localStorage.setItem('inventory_records', JSON.stringify(inventoryData));
-            
-            showToast(`💾 ${pendingItemId} を ${qty} 個 記録しました`);
-            
+            inventoryData.unshift(record);
+            saveLocalData('inventory_records', JSON.stringify(inventoryData));
+            showToast(`${pendingItemId} を ${qty} 個記録しました`);
             renderHistory();
             closeModal();
         }
 
-        // --- モーダルを閉じてカメラ再開 ---
+        // --- 数量入力を閉じる ---
         function closeModal() {
             quantityModalEl.classList.add('hidden');
             pendingItemId = '';
-            // タイムアウトを設けて、ダイアログを閉じた瞬間の誤スキャンを防止
-            setTimeout(() => {
-                isProcessing = false;
-            }, 1000);
+            setTimeout(() => { isProcessing = false; }, 800);
         }
 
-        // --- 履歴の描画 ---
+        // --- 履歴描画 ---
         function renderHistory() {
-            dataCountEl.innerText = inventoryData.length;
-            
+            dataCountEl.textContent = inventoryData.length;
+            historyListEl.querySelectorAll('.history-item').forEach(element => element.remove());
+
             if (inventoryData.length === 0) {
                 emptyMessageEl.classList.remove('hidden');
                 downloadCsvBtn.classList.add('hidden');
-                // 古いリストアイテムをクリア
-                const items = historyListEl.querySelectorAll('.history-item');
-                items.forEach(el => el.remove());
                 return;
             }
 
             emptyMessageEl.classList.add('hidden');
             downloadCsvBtn.classList.remove('hidden');
 
-            // 既存のリスト要素を一度削除して再描画
-            const items = historyListEl.querySelectorAll('.history-item');
-            items.forEach(el => el.remove());
-
             inventoryData.forEach(data => {
-                const div = document.createElement('div');
-                div.className = 'history-item bg-gray-50 border border-gray-200 rounded-lg p-3 flex justify-between items-center text-xs shadow-xs animate-fade-in';
-                div.innerHTML = `
-                    <div class="space-y-1 flex-1 min-w-0 pr-2">
-                        <div class="flex items-center gap-2">
-                            <span class="font-bold text-gray-900 truncate max-w-[120px]" title="${data.item}">${data.item}</span>
-                            <span class="bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded text-[10px] font-medium truncate max-w-[80px]">${data.area}</span>
-                        </div>
-                        <div class="text-[10px] text-gray-400 font-mono">${data.datetime}</div>
-                    </div>
-                    <div class="flex items-center gap-3">
-                        <div class="text-right">
-                            <span class="text-base font-black text-gray-900">${data.quantity}</span> <span class="text-gray-500 font-medium">個</span>
-                        </div>
-                        <button onclick="deleteRecord('${data.id}')" class="text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition-colors" title="削除">
-                            🗑️
-                        </button>
-                    </div>
-                `;
-                historyListEl.appendChild(div);
+                const row = document.createElement('div');
+                row.className = 'history-item';
+
+                const main = document.createElement('div');
+                main.className = 'history-main';
+
+                const title = document.createElement('div');
+                title.className = 'history-title';
+                title.textContent = data.item || '';
+
+                const area = document.createElement('div');
+                area.textContent = `エリア：${data.area || ''}`;
+
+                const date = document.createElement('div');
+                date.className = 'history-meta';
+                date.textContent = data.datetime || '';
+
+                main.append(title, area, date);
+
+                const right = document.createElement('div');
+                right.style.display = 'flex';
+                right.style.alignItems = 'center';
+                right.style.gap = '8px';
+
+                const qty = document.createElement('span');
+                qty.className = 'history-qty';
+                qty.textContent = `${data.quantity} 個`;
+
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'delete-button';
+                deleteBtn.type = 'button';
+                deleteBtn.textContent = '削除';
+                deleteBtn.setAttribute('aria-label', `${data.item} の記録を削除`);
+                deleteBtn.addEventListener('click', () => deleteRecord(data.id));
+
+                right.append(qty, deleteBtn);
+                row.append(main, right);
+                historyListEl.appendChild(row);
             });
         }
 
-        // --- レコード削除 ---
-        window.deleteRecord = function(id) {
-            if (confirm('このレコードを削除してもよろしいですか？')) {
-                inventoryData = inventoryData.filter(item => item.id !== id);
-                localStorage.setItem('inventory_records', JSON.stringify(inventoryData));
-                showToast('データを削除しました');
-                renderHistory();
-            }
-        };
+        // --- 履歴削除 ---
+        function deleteRecord(id) {
+            if (!confirm('この記録を削除してもよろしいですか？')) return;
 
-        // --- CSVエクスポート機能 ---
+            inventoryData = inventoryData.filter(item => item.id !== id);
+            saveLocalData('inventory_records', JSON.stringify(inventoryData));
+            showToast('データを削除しました');
+            renderHistory();
+        }
+
+        // --- CSV出力 ---
         function exportToCsv() {
-            if (inventoryData.length === 0) return;
+            if (!inventoryData.length) return;
 
-            // BOM付き UTF-8 でExcelの文字化けを防止
-            let csvContent = "﻿日時,エリアID,品物ID,個数
-";
-            
-            inventoryData.forEach(row => {
-                // 安全のためにダブルクォーテーションで囲む
-                csvContent += `"${row.datetime}","${row.area}","${row.item}",${row.quantity}
-`;
+            const escapeCsv = value =>
+                `"${String(value ?? '').replace(/"/g, '""')}"`;
+
+            const rows = [
+                ['日時', 'エリアID', '品物ID', '個数'],
+                ...inventoryData.map(row => [
+                    row.datetime,
+                    row.area,
+                    row.item,
+                    row.quantity
+                ])
+            ];
+
+            // Excelで日本語が文字化けしにくいようBOMを付ける
+            const csvContent = '\uFEFF' + rows
+                .map(row => row.map(escapeCsv).join(','))
+                .join('\r\n');
+
+            const blob = new Blob([csvContent], {
+                type: 'text/csv;charset=utf-8;'
             });
 
-            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
-            const link = document.createElement("a");
-            
-            const dateStr = new Date().toISOString().slice(0,10);
-            link.setAttribute("href", url);
-            link.setAttribute("download", `棚卸データ_${dateStr}.csv`);
-            link.style.visibility = 'hidden';
-            
+            const link = document.createElement('a');
+            const dateStr = new Date().toISOString().slice(0, 10);
+
+            link.href = url;
+            link.download = `棚卸データ_${dateStr}.csv`;
             document.body.appendChild(link);
             link.click();
-            document.body.removeChild(link);
+            link.remove();
+
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
         }
+
+    })();
     </script>
 </body>
 </html>
