@@ -567,12 +567,38 @@
 
         function onScanFailure(_errorMessage) {}
 
+        // --- 状態変数に追加 ---
+        let candidateCode = null;
+        let candidateCount = 0;
+        let lastCandidateTime = 0;
+        const REQUIRED_MATCH_COUNT = 2; // 2回連続一致で確定
+        const MATCH_TIMEOUT_MS = 600;   // 0.6秒以上間隔が空いたらリセット
+
         // --- 読み取り成功時の判定 ---
         function onScanSuccess(decodedText) {
             if (isProcessing || !cameraRunning) return;
-
+            
             const code = String(decodedText || '').trim().toUpperCase();
+            const now = performance.now();
 
+            // 直前のコードと同じかつ、短時間（0.6秒以内）に連続で読めたか判定
+            if (code === candidateCode && (now - lastCandidateTime) < MATCH_TIMEOUT_MS) {
+                candidateCount++;
+            } else {
+                candidateCode = code;
+                candidateCount = 1;
+            }
+            lastCandidateTime = now;
+            
+            // 規定回数（2回）連続一致するまでは保留（スルー）
+            if (candidateCount < REQUIRED_MATCH_COUNT) {
+                return;
+            }
+            
+            // 2回一致して確定したのでカウンターをリセット
+            candidateCode = null;
+            candidateCount = 0;
+            
             // エリアバーコード (AREA-...)
             if (code.startsWith('AREA-')) {
                 if (pendingItems.length > 0 && currentAreaId && currentAreaId !== code) {
