@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#2563eb">
+    <title>棚卸スキャンアプリ (リーダー専用版)</title>
+
+    <style>
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            background: #f3f4f6;
+            color: #1f2937;
+            font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        }
+
+        button, input { font: inherit; }
+        button { cursor: pointer; }
+        button:disabled { cursor: not-allowed; opacity: .6; }
+
+        .header {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            padding: 16px;
+            background: #2563eb;
+            color: white;
+            box-shadow: 0 2px 8px #0002;
+        }
+
+        .header h1 { margin: 0; font-size: 1.2rem; }
+        .container {
+            width: min(100% - 24px, 520px);
+            margin: 16px auto 40px;
+        }
+
+        .card {
+            margin-bottom: 16px;
+            padding: 16px;
+            border: 1px solid #e5e7eb;
+            border-radius: 14px;
+            background: white;
+            box-shadow: 0 1px 3px #0000000a;
+        }
+
+        .section-title { margin: 0 0 12px; font-size: 1rem; }
+        .area-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+        .muted { color: #6b7280; font-size: .85rem; }
+        #currentArea { margin: 4px 0 0; font-size: 1.15rem; font-weight: 700; overflow-wrap: anywhere; }
+        #areaIndicator { width: 12px; height: 12px; flex: 0 0 auto; border-radius: 50%; background: #ef4444; }
+        #areaIndicator.active { background: #22c55e; }
+
+        .status-box {
+            padding: 14px;
+            border-radius: 10px;
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+            color: #1e40af;
+            font-size: 0.9rem;
+            line-height: 1.4;
+        }
+
+        .button {
+            display: block;
+            width: 100%;
+            border: 0;
+            border-radius: 10px;
+            padding: 12px 16px;
+            font-weight: 700;
+        }
+
+        .primary { background: #2563eb; color: white; }
+        .secondary { background: #f3f4f6; color: #374151; }
+        .danger { background: #fee2e2; color: #b91c1c; }
+
+        #historyList { display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto; }
+        .history-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            background: #f9fafb;
+            font-size: .85rem;
+        }
+        .history-main { min-width: 0; overflow-wrap: anywhere; }
+        .history-title { font-weight: 700; }
+        .history-meta { margin-top: 4px; color: #6b7280; font-size: .75rem; }
+        .history-qty { white-space: nowrap; font-size: 1rem; font-weight: 800; }
+        
+        .delete-button {
+            border: 0;
+            border-radius: 8px;
+            padding: 6px 10px;
+            background: #fee2e2;
+            color: #b91c1c;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+        .delete-button:hover { background: #fecaca; }
+
+        .scan-summary {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 14px;
+            padding: 10px 12px;
+            border-radius: 10px;
+            background: #f0fdf4;
+            color: #166534;
+        }
+        .scan-summary strong { font-size: 1.1rem; }
+        .pending-preview, .quantity-entry-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        .pending-row, .quantity-entry-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 10px 12px;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            background: #f9fafb;
+        }
+        .pending-code, .entry-code {
+            min-width: 0;
+            overflow-wrap: anywhere;
+            font-weight: 700;
+        }
+        .entry-quantity {
+            width: 100px;
+            flex: 0 0 100px;
+            padding: 8px;
+            border: 2px solid #d1d5db;
+            border-radius: 9px;
+            text-align: center;
+            font-size: 1.2rem;
+            font-weight: 700;
+            background: #fff;
+        }
+        .entry-quantity:focus { outline: 2px solid #93c5fd; border-color: #2563eb; }
+        .pending-tag { color: #6b7280; font-size: .75rem; }
+
+        .hidden { display: none !important; }
+        #toast {
+            position: fixed;
+            z-index: 120;
+            left: 50%;
+            bottom: 20px;
+            transform: translateX(-50%);
+            width: max-content;
+            max-width: calc(100% - 32px);
+            padding: 12px 16px;
+            border-radius: 999px;
+            background: #111827;
+            color: white;
+            font-size: .85rem;
+            box-shadow: 0 4px 16px #0003;
+        }
+    </style>
+</head>
+
+<body>
+    <header class="header">
+        <h1>📦 棚卸スキャン</h1>
+        <span>外付けリーダー版</span>
+    </header>
+
+    <main class="container">
+        <!-- エリア表示 -->
+        <section class="card">
+            <div class="area-row">
+                <div>
+                    <div class="muted">現在の棚卸エリア</div>
+                    <p id="currentArea">⚠️ 未選択 (AR-...)</p>
+                </div>
+                <div id="areaIndicator" aria-label="エリア未選択"></div>
+            </div>
+        </section>
+
+        <!-- リーダースキャン受付中カード -->
+        <section class="card">
+            <h2 class="section-title">🔫 バーコードリーダー待機中</h2>
+            <div class="status-box">
+                リーダーでバーコードをスキャンしてください。<br>
+                <strong>AR-...</strong> でエリア指定、<strong>ITEM-...</strong> で商品追加。
+            </div>
+
+            <div class="scan-summary">
+                <span>今回の読み取り商品</span>
+                <strong><span id="pendingCount">0</span> 件</strong>
+            </div>
+
+            <button id="goToEntryBtn" class="button primary" type="button" style="margin-top:12px">読み取り終了・数量入力へ</button>
+
+            <div id="pendingPreview" class="pending-preview">
+                <p id="pendingEmpty" class="muted">まだ商品をスキャンしていません。</p>
+            </div>
+        </section>
+
+        <!-- 数量一括入力 -->
+        <section id="quantityEntryCard" class="card hidden">
+            <div class="area-row" style="margin-bottom:8px">
+                <h2 class="section-title" style="margin:0">🧮 数量をまとめて入力</h2>
+                <span class="muted" id="entryAreaLabel"></span>
+            </div>
+            <p class="muted">各商品の数量を入力してください（0個も可）。不要な行は「✕」で除外できます。</p>
+            <div id="quantityEntryList" class="quantity-entry-list"></div>
+            <button id="saveBatchBtn" class="button primary" type="button" style="margin-top:12px">入力した数量を一括保存</button>
+            <button id="backToScanBtn" class="button secondary" type="button" style="margin-top:8px">追加でスキャンする</button>
+        </section>
+
+        <!-- 保存履歴 -->
+        <section class="card">
+            <div class="area-row" style="margin-bottom:12px">
+                <h2 class="section-title" style="margin:0">📊 保存履歴 (<span id="dataCount">0</span>件)</h2>
+                <div style="display:flex; gap:6px;">
+                    <button id="downloadCsv" class="secondary hidden" type="button" style="padding:6px 12px;border:0;border-radius:8px;font-size:0.85rem">CSV出力</button>
+                    <button id="clearAllBtn" class="danger hidden" type="button" style="padding:6px 12px;border:0;border-radius:8px;font-size:0.85rem">全削除</button>
+                </div>
+            </div>
+            <div id="historyList">
+                <p id="emptyMessage" class="muted" style="text-align:center;padding:24px 0">データがありません。バーコードをスキャンしてください。</p>
+            </div>
+        </section>
+    </main>
+
+    <div id="toast" class="hidden" role="status" aria-live="polite"></div>
+
+    <script>
+    (() => {
+        'use strict';
+
+        let currentAreaId = '';
+        let inventoryData = [];
+        let pendingItems = [];
+        let toastTimer = null;
+        let audioCtx = null;
+
+        // キーボード入力バッファ（外付けリーダーからの入力を受ける）
+        let scanBuffer = '';
+        let lastKeyTime = 0;
+
+        // DOM
+        const currentAreaEl = document.getElementById('currentArea');
+        const areaIndicatorEl = document.getElementById('areaIndicator');
+        const historyListEl = document.getElementById('historyList');
+        const emptyMessageEl = document.getElementById('emptyMessage');
+        const dataCountEl = document.getElementById('dataCount');
+        const downloadCsvBtn = document.getElementById('downloadCsv');
+        const clearAllBtn = document.getElementById('clearAllBtn');
+        const toastEl = document.getElementById('toast');
+        const pendingCountEl = document.getElementById('pendingCount');
+        const pendingPreviewEl = document.getElementById('pendingPreview');
+        const pendingEmptyEl = document.getElementById('pendingEmpty');
+        const quantityEntryCardEl = document.getElementById('quantityEntryCard');
+        const quantityEntryListEl = document.getElementById('quantityEntryList');
+        const entryAreaLabelEl = document.getElementById('entryAreaLabel');
+        const goToEntryBtn = document.getElementById('goToEntryBtn');
+        const saveBatchBtn = document.getElementById('saveBatchBtn');
+        const backToScanBtn = document.getElementById('backToScanBtn');
+
+        // 音声・バイブ
+        function getAudioContext() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            return audioCtx;
+        }
+
+        function playBeep(type = 'item') {
+            try {
+                const ctx = getAudioContext();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.type = 'sine';
+
+                if (type === 'area') {
+                    osc.frequency.setValueAtTime(1760, ctx.currentTime);
+                    osc.frequency.setValueAtTime(2200, ctx.currentTime + 0.08);
+                    gain.gain.setValueAtTime(0.2, ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18);
+                    osc.start(ctx.currentTime);
+                    osc.stop(ctx.currentTime + 0.18);
+                } else {
+                    osc.frequency.setValueAtTime(1760, ctx.currentTime);
+                    gain.gain.setValueAtTime(0.2, ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08);
+                    osc.start(ctx.currentTime);
+                    osc.stop(ctx.currentTime + 0.08);
+                }
+            } catch (e) {}
+
+            if ('vibrate' in navigator) {
+                navigator.vibrate(type === 'area' ? [50, 40, 50] : 60);
+            }
+        }
+
+        // localStorage
+        function loadStoredData(key, fallback) {
+            try {
+                const raw = localStorage.getItem(key);
+                return raw === null ? fallback : JSON.parse(raw);
+            } catch (error) {
+                return fallback;
+            }
+        }
+
+        const storedInventory = loadStoredData('inventory_records', []);
+        inventoryData = Array.isArray(storedInventory) ? storedInventory : [];
+
+        function saveLocalData(key, value) {
+            try {
+                localStorage.setItem(key, value);
+                return true;
+            } catch (error) {
+                showToast('端末に保存できませんでした');
+                return false;
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            updateAreaUI();
+            renderHistory();
+            renderPendingPreview();
+
+            // 画面のどこを触ってもオーディオをアンロック
+            document.addEventListener('click', () => getAudioContext(), { once: true });
+
+            goToEntryBtn.addEventListener('click', openQuantityEntry);
+            saveBatchBtn.addEventListener('click', saveBatch);
+            backToScanBtn.addEventListener('click', () => {
+                syncQuantityInputs();
+                quantityEntryCardEl.classList.add('hidden');
+            });
+            downloadCsvBtn.addEventListener('click', exportToCsv);
+            clearAllBtn.addEventListener('click', clearAllHistory);
+
+            // 外付けリーダーのグローバル入力監視
+            setupBarcodeReaderListener();
+        });
+
+        // --- 外付けバーコードリーダー（HIDキー入力）の判定ロジック ---
+        function setupBarcodeReaderListener() {
+            window.addEventListener('keydown', (e) => {
+                // 入力欄（数量入力など）にフォーカスがある時、通常の数字入力ならそのまま通す
+                const activeEl = document.activeElement;
+                const isInputActive = activeEl && activeEl.tagName === 'INPUT';
+
+                const now = performance.now();
+                // バーコードリーダーは人間と違い1文字あたり20〜30ms以内の超高速で入力される
+                if (now - lastKeyTime > 150) {
+                    scanBuffer = ''; // 間隔が空いたら新しい入力とみなす
+                }
+                lastKeyTime = now;
+
+                if (e.key === 'Enter') {
+                    const code = scanBuffer.trim().toUpperCase();
+                    scanBuffer = '';
+
+                    // AR- または ITEM- で始まっていればバーコード読み取りとして処理
+                    if (code.startsWith('AR-') || code.startsWith('ITEM-')) {
+                        e.preventDefault();
+                        if (isInputActive) activeEl.blur(); // 入力欄からフォーカスを外す
+                        processScannedCode(code);
+                    }
+                    return;
+                }
+
+                // 1文字キー（英数記号）ならバッファに蓄積
+                if (e.key.length === 1) {
+                    scanBuffer += e.key;
+                }
+            }, true);
+        }
+
+        // バーコード受信時の処理
+        function processScannedCode(code) {
+            // エリアバーコード (AR-...)
+            if (code.startsWith('AR-')) {
+                if (pendingItems.length > 0 && currentAreaId && currentAreaId !== code) {
+                    showToast('読み取り中商品があります。先に保存してください', 3000);
+                    return;
+                }
+                if (currentAreaId === code) {
+                    showToast(`エリア ${code} は選択済みです`);
+                    return;
+                }
+                currentAreaId = code;
+                playBeep('area');
+                updateAreaUI();
+                showToast(`エリア「${code}」に設定しました`);
+                return;
+            }
+
+            // 商品バーコード (ITEM-...)
+            if (code.startsWith('ITEM-')) {
+                if (!currentAreaId) {
+                    showToast('先にエリア（AR-...）をスキャンしてください', 2500);
+                    return;
+                }
+                if (pendingItems.some(i => i.item === code)) {
+                    showToast(`${code} はすでに読み取り済みです`, 1500);
+                    return;
+                }
+
+                playBeep('item');
+                pendingItems.push({ item: code, quantity: '' });
+                renderPendingPreview();
+                showToast(`${code} を追加しました`);
+
+                // 数量入力カードが開いていれば再描画
+                if (!quantityEntryCardEl.classList.contains('hidden')) {
+                    buildQuantityEntryList();
+                }
+            }
+        }
+
+        function showToast(message, duration = 2500) {
+            toastEl.textContent = message;
+            toastEl.classList.remove('hidden');
+            if (toastTimer) clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => toastEl.classList.add('hidden'), duration);
+        }
+
+        function updateAreaUI() {
+            if (currentAreaId) {
+                currentAreaEl.textContent = currentAreaId;
+                currentAreaEl.style.color = '#2563eb';
+                areaIndicatorEl.classList.add('active');
+            } else {
+                currentAreaEl.textContent = '⚠️ 未選択 (AR-...)';
+                currentAreaEl.style.color = '#dc2626';
+                areaIndicatorEl.classList.remove('active');
+            }
+        }
+
+        function renderPendingPreview() {
+            pendingCountEl.textContent = String(pendingItems.length);
+            pendingPreviewEl.querySelectorAll('.pending-row').forEach(el => el.remove());
+            pendingEmptyEl.classList.toggle('hidden', pendingItems.length > 0);
+
+            pendingItems.forEach((item, index) => {
+                const row = document.createElement('div');
+                row.className = 'pending-row';
+
+                const code = document.createElement('span');
+                code.className = 'pending-code';
+                code.textContent = item.item;
+
+                const right = document.createElement('div');
+                right.style.display = 'flex';
+                right.style.alignItems = 'center';
+                right.style.gap = '8px';
+
+                const tag = document.createElement('span');
+                tag.className = 'pending-tag';
+                tag.textContent = 'スキャン済';
+
+                const removeBtn = document.createElement('button');
+                removeBtn.className = 'delete-button';
+                removeBtn.type = 'button';
+                removeBtn.textContent = '✕ 削除';
+                removeBtn.addEventListener('click', () => removePendingItem(index));
+
+                right.append(tag, removeBtn);
+                row.append(code, right);
+                pendingPreviewEl.appendChild(row);
+            });
+        }
+
+        function openQuantityEntry() {
+            if (pendingItems.length === 0) {
+                showToast('スキャンされた商品がありません');
+                return;
+            }
+            buildQuantityEntryList();
+            quantityEntryCardEl.classList.remove('hidden');
+            quantityEntryCardEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        function buildQuantityEntryList() {
+            quantityEntryListEl.replaceChildren();
+            entryAreaLabelEl.textContent = currentAreaId ? `エリア：${currentAreaId}` : '';
+
+            pendingItems.forEach((item, index) => {
+                const row = document.createElement('div');
+                row.className = 'quantity-entry-row';
+
+                const info = document.createElement('div');
+                info.style.minWidth = '0';
+                info.style.flex = '1';
+
+                const code = document.createElement('div');
+                code.className = 'entry-code';
+                code.textContent = item.item;
+
+                const sub = document.createElement('div');
+                sub.className = 'pending-tag';
+                sub.textContent = `商品 ${index + 1}`;
+                info.append(code, sub);
+
+                const input = document.createElement('input');
+                input.className = 'entry-quantity';
+                input.type = 'number';
+                input.min = '0'; // 0個許可
+                input.step = '1';
+                input.inputMode = 'numeric';
+                input.placeholder = '数量';
+                input.value = item.quantity;
+                input.addEventListener('input', () => { item.quantity = input.value; });
+                input.addEventListener('focus', () => input.select());
+
+                const removeBtn = document.createElement('button');
+                removeBtn.className = 'delete-button';
+                removeBtn.type = 'button';
+                removeBtn.textContent = '✕';
+                removeBtn.addEventListener('click', () => {
+                    syncQuantityInputs();
+                    removePendingItem(index);
+                    if (pendingItems.length === 0) {
+                        quantityEntryCardEl.classList.add('hidden');
+                    } else {
+                        buildQuantityEntryList();
+                    }
+                });
+
+                row.append(info, input, removeBtn);
+                quantityEntryListEl.appendChild(row);
+            });
+        }
+
+        function syncQuantityInputs() {
+            const inputs = [...quantityEntryListEl.querySelectorAll('.entry-quantity')];
+            pendingItems.forEach((item, index) => {
+                if (inputs[index]) item.quantity = inputs[index].value.trim();
+            });
+        }
+
+        function removePendingItem(index) {
+            if (index < 0 || index >= pendingItems.length) return;
+            const removed = pendingItems.splice(index, 1)[0];
+            showToast(`${removed.item} を取り消しました`);
+            renderPendingPreview();
+        }
+
+        function saveBatch() {
+            if (!pendingItems.length) {
+                showToast('保存する商品がありません');
+                return;
+            }
+
+            syncQuantityInputs();
+
+            // 0個以上の整数チェック
+            const invalid = pendingItems.find(item => {
+                const qty = Number(item.quantity);
+                return item.quantity === '' || !Number.isInteger(qty) || qty < 0;
+            });
+            if (invalid) {
+                showToast(`${invalid.item} の数量を0以上の整数で入力してください`, 3500);
+                const invalidIndex = pendingItems.indexOf(invalid);
+                const inputs = quantityEntryListEl.querySelectorAll('.entry-quantity');
+                inputs[invalidIndex]?.focus();
+                return;
+            }
+
+            const now = new Date();
+            const pad = n => String(n).padStart(2, '0');
+            const timestamp = `${now.getFullYear()}/${pad(now.getMonth() + 1)}/${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+
+            const newRecords = pendingItems.map(item => ({
+                id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+                datetime: timestamp,
+                area: currentAreaId,
+                item: item.item,
+                quantity: Number(item.quantity)
+            }));
+
+            const updatedInventory = [...newRecords, ...inventoryData];
+            if (!saveLocalData('inventory_records', JSON.stringify(updatedInventory))) return;
+
+            inventoryData = updatedInventory;
+            const count = newRecords.length;
+            pendingItems = [];
+            renderPendingPreview();
+            quantityEntryListEl.replaceChildren();
+            quantityEntryCardEl.classList.add('hidden');
+            renderHistory();
+            showToast(`${count}商品を一括保存しました`);
+        }
+
+        function renderHistory() {
+            dataCountEl.textContent = inventoryData.length;
+            historyListEl.querySelectorAll('.history-item').forEach(el => el.remove());
+
+            const hasData = inventoryData.length > 0;
+            emptyMessageEl.classList.toggle('hidden', hasData);
+            downloadCsvBtn.classList.toggle('hidden', !hasData);
+            clearAllBtn.classList.toggle('hidden', !hasData);
+
+            if (!hasData) return;
+
+            inventoryData.forEach(data => {
+                const row = document.createElement('div');
+                row.className = 'history-item';
+
+                const main = document.createElement('div');
+                main.className = 'history-main';
+
+                const title = document.createElement('div');
+                title.className = 'history-title';
+                title.textContent = data.item || '';
+
+                const area = document.createElement('div');
+                area.textContent = `エリア：${data.area || ''}`;
+
+                const date = document.createElement('div');
+                date.className = 'history-meta';
+                date.textContent = data.datetime || '';
+
+                main.append(title, area, date);
+
+                const right = document.createElement('div');
+                right.style.display = 'flex';
+                right.style.alignItems = 'center';
+                right.style.gap = '8px';
+
+                const qty = document.createElement('span');
+                qty.className = 'history-qty';
+                qty.textContent = `${data.quantity} 個`;
+
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'delete-button';
+                deleteBtn.type = 'button';
+                deleteBtn.textContent = '削除';
+                deleteBtn.addEventListener('click', () => deleteRecord(data.id));
+
+                right.append(qty, deleteBtn);
+                row.append(main, right);
+                historyListEl.appendChild(row);
+            });
+        }
+
+        function deleteRecord(id) {
+            if (!confirm('この記録を削除してもよろしいですか？')) return;
+            const updated = inventoryData.filter(item => item.id !== id);
+            if (!saveLocalData('inventory_records', JSON.stringify(updated))) return;
+            inventoryData = updated;
+            showToast('データを削除しました');
+            renderHistory();
+        }
+
+        function clearAllHistory() {
+            if (!inventoryData.length) return;
+            const count = inventoryData.length;
+            if (!confirm(`【確認】\n全 ${count} 件の棚卸データを消去しますか？\n事前にCSV出力を行ってください。`)) return;
+
+            localStorage.removeItem('inventory_records');
+            inventoryData = [];
+            renderHistory();
+            showToast(`全 ${count} 件のデータを消去しました`);
+        }
+
+        // CSV出力（囲みなし・カンマ区切り）
+        function exportToCsv() {
+            if (!inventoryData.length) return;
+
+            const rows = [
+                ['日時', 'エリアID', '品物ID', '個数'],
+                ...inventoryData.map(row => [row.datetime, row.area, row.item, row.quantity])
+            ];
+            const csvContent = '\uFEFF' + rows.map(row => row.join(',')).join('\r\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            const now = new Date();
+            const pad = n => String(n).padStart(2, '0');
+            const dateStr = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}`;
+            link.href = url;
+            link.download = `棚卸データ_${dateStr}.csv`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }
+    })();
+    </script>
+</body>
+</html>
